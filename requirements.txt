@@ -1,0 +1,16 @@
+# Algo2Code — Section 1 Requirements
+# ─────────────────────────────────────
+# Section 1 uses only the Python standard library.
+# No third-party packages are required.
+#
+# Minimum Python version: 3.10
+# (uses match-less union typing X | Y in type hints — available from 3.10)
+#
+# To verify your Python version:
+#   python --version
+#
+# If you need to run on Python 3.9, change the one type hint in main.py:
+#   inputs_override: dict | None  →  inputs_override: Optional[dict]
+#   and add:  from typing import Optional
+
+# (intentionally empty — no pip packages needed)
