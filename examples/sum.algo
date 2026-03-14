@@ -1,0 +1,6 @@
+  READ n
+  SET sum = 0
+  FOR i = 1 TO n
+      SET sum = sum + i
+  END
+  PRINT sum

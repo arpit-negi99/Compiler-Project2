@@ -1,6 +1,6 @@
 {
   "algo2code_section": 1,
-  "source_code": "# Sum of squares: 1\u00b2 + 2\u00b2 + ... + n\u00b2\nREAD n\nSET total = 0\nFOR i = 1 TO n\n    SET total = total + i * i\nEND\nPRINT total",
+  "source_code": "READ n\nREAD m\nPRINT n+m",
   "ast": {
     "type": "Program",
     "statements": [
@@ -9,56 +9,22 @@
         "variable": "n"
       },
       {
-        "type": "Assign",
-        "variable": "total",
-        "expression": {
-          "type": "Number",
-          "value": 0
-        }
-      },
-      {
-        "type": "For",
-        "variable": "i",
-        "start": {
-          "type": "Number",
-          "value": 1
-        },
-        "end": {
-          "type": "Variable",
-          "name": "n"
-        },
-        "body": [
-          {
-            "type": "Assign",
-            "variable": "total",
-            "expression": {
-              "type": "BinaryOp",
-              "op": "+",
-              "left": {
-                "type": "Variable",
-                "name": "total"
-              },
-              "right": {
-                "type": "BinaryOp",
-                "op": "*",
-                "left": {
-                  "type": "Variable",
-                  "name": "i"
-                },
-                "right": {
-                  "type": "Variable",
-                  "name": "i"
-                }
-              }
-            }
-          }
-        ]
+        "type": "Read",
+        "variable": "m"
       },
       {
         "type": "Print",
         "expression": {
-          "type": "Variable",
-          "name": "total"
+          "type": "BinaryOp",
+          "op": "+",
+          "left": {
+            "type": "Variable",
+            "name": "n"
+          },
+          "right": {
+            "type": "Variable",
+            "name": "m"
+          }
         }
       }
     ]
@@ -67,18 +33,19 @@
     "section": 1,
     "status": "success",
     "inputs": {
-      "n": 3
+      "n": 3,
+      "m": 4
     },
     "outputs": [
-      14
+      7
     ],
     "variables": {
       "n": 3,
-      "total": 14,
-      "i": 3
+      "m": 4
     },
     "read_order": [
-      "n"
+      "n",
+      "m"
     ]
   }
 }
