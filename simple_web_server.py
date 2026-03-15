@@ -1941,27 +1941,17 @@ def application(environ, start_response):
             try:
                 data = json.loads(post_data)
                 algorithm = data.get('algorithm', '')
-                
-                # Simple variable detection
-                variables = []
-                lines = algorithm.split('\n')
-                for line in lines:
-                    line = line.strip().upper()
-                    if line.startswith('READ'):
-                        parts = line[5:].strip()  # Get everything after READ
-                        # Handle multiple variables: READ n, m, x
-                        for var in parts.split(','):
-                            var = var.strip()
-                            if var and var not in variables:
-                                variables.append(var)
-                
+
+                # Use the shared detection helper so variable names preserve their casing
+                variables = _detect_input_variables(algorithm)
+
                 response_data = {
                     'success': True,
                     'variables': variables
                 }
                 start_response('200 OK', [('Content-Type', 'application/json')])
                 return [json.dumps(response_data).encode('utf-8')]
-                
+
             except Exception as e:
                 start_response('500 Internal Server Error', [('Content-Type', 'application/json')])
                 return [json.dumps({'success': False, 'error': str(e)}).encode('utf-8')]
