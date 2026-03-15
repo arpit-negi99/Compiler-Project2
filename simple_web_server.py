@@ -1752,6 +1752,11 @@ def application(environ, start_response):
                 algorithm = data.get('algorithm', '')
                 inputs = data.get('inputs', {})
                 
+                # Debug logging
+                print(f"DEBUG: Algorithm = {repr(algorithm)}")
+                print(f"DEBUG: Raw inputs = {repr(inputs)}")
+                print(f"DEBUG: Inputs type = {type(inputs)}")
+                
                 # Fix escaped newlines - handle both literal and JSON escapes
                 algorithm = algorithm.replace('\\\\n', '\n').replace('\\\\r', '\r').replace('\\\\t', '\t')
                 algorithm = algorithm.replace('\\n', '\n').replace('\\r', '\r').replace('\\t', '\t')
@@ -1798,6 +1803,8 @@ def application(environ, start_response):
                                 # Auto-detect variables from algorithm
                                 detected_vars = _detect_input_variables(algorithm)
                                 values = [x.strip() for x in inputs_text.split(',')]
+                                print(f"DEBUG: Detected vars = {detected_vars}")
+                                print(f"DEBUG: Values = {values}")
                                 for i, val in enumerate(values):
                                     if i < len(detected_vars):
                                         var_name = detected_vars[i]
@@ -1812,6 +1819,8 @@ def application(environ, start_response):
                         except Exception as e:
                             print(f"Input parsing error: {e}")
                             inputs = {}
+                
+                print(f"DEBUG: Final inputs = {inputs}")
                 
                 # Run only Section 1 (simulation)
                 from src.lexer import Lexer
@@ -1864,10 +1873,14 @@ def application(environ, start_response):
                         "detected_inputs": detected_vars
                     }
                     
+                    print(f"DEBUG: Response data = {response_data}")
                     start_response('200 OK', [('Content-Type', 'application/json')])
                     return [json.dumps(response_data).encode('utf-8')]
                     
                 except Exception as e:
+                    print(f"DEBUG: Execution error: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
                     start_response('500 Internal Server Error', [('Content-Type', 'application/json')])
                     return [json.dumps({"error": f"Execution error: {str(e)}"}).encode('utf-8')]
                     
@@ -1875,6 +1888,9 @@ def application(environ, start_response):
                 start_response('400 Bad Request', [('Content-Type', 'application/json')])
                 return [json.dumps({"error": "Invalid JSON in request body"}).encode('utf-8')]
             except Exception as e:
+                print(f"DEBUG: Server error: {str(e)}")
+                import traceback
+                traceback.print_exc()
                 start_response('500 Internal Server Error', [('Content-Type', 'application/json')])
                 return [json.dumps({"error": f"Server error: {str(e)}"}).encode('utf-8')]
         

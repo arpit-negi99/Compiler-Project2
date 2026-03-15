@@ -1,6 +1,6 @@
 {
   "algo2code_section": 1,
-  "source_code": "READ n\nSET sum = 0\nFOR i = 1 TO n\n    SET sum = sum + i\nEND\nPRINT sum",
+  "source_code": "READ n\nread m\nPRINT n +m",
   "ast": {
     "type": "Program",
     "statements": [
@@ -9,49 +9,22 @@
         "variable": "n"
       },
       {
-        "type": "Assign",
-        "variable": "sum",
-        "expression": {
-          "type": "Number",
-          "value": 0
-        }
-      },
-      {
-        "type": "For",
-        "variable": "i",
-        "start": {
-          "type": "Number",
-          "value": 1
-        },
-        "end": {
-          "type": "Variable",
-          "name": "n"
-        },
-        "body": [
-          {
-            "type": "Assign",
-            "variable": "sum",
-            "expression": {
-              "type": "BinaryOp",
-              "op": "+",
-              "left": {
-                "type": "Variable",
-                "name": "sum"
-              },
-              "right": {
-                "type": "Variable",
-                "name": "i"
-              }
-            }
-          }
-        ],
-        "direction": "forward"
+        "type": "Read",
+        "variable": "m"
       },
       {
         "type": "Print",
         "expression": {
-          "type": "Variable",
-          "name": "sum"
+          "type": "BinaryOp",
+          "op": "+",
+          "left": {
+            "type": "Variable",
+            "name": "n"
+          },
+          "right": {
+            "type": "Variable",
+            "name": "m"
+          }
         }
       }
     ]
@@ -60,18 +33,19 @@
     "section": 1,
     "status": "success",
     "inputs": {
-      "n": 5
+      "n": 5,
+      "m": 7
     },
     "outputs": [
-      15
+      12
     ],
     "variables": {
       "n": 5,
-      "sum": 15,
-      "i": 5
+      "m": 7
     },
     "read_order": [
-      "n"
+      "n",
+      "m"
     ]
   }
 }
