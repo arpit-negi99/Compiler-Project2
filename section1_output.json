@@ -1,6 +1,6 @@
 {
   "algo2code_section": 1,
-  "source_code": "READ n\nREAD m\nREAD k\nSET sum = n + m +k\nPRINT sum",
+  "source_code": "READ n\nSET sum = 0\nFOR i = 1 TO n\n    SET sum = sum + i\nEND\nPRINT sum",
   "ast": {
     "type": "Program",
     "statements": [
@@ -9,36 +9,43 @@
         "variable": "n"
       },
       {
-        "type": "Read",
-        "variable": "m"
-      },
-      {
-        "type": "Read",
-        "variable": "k"
-      },
-      {
         "type": "Assign",
         "variable": "sum",
         "expression": {
-          "type": "BinaryOp",
-          "op": "+",
-          "left": {
-            "type": "BinaryOp",
-            "op": "+",
-            "left": {
-              "type": "Variable",
-              "name": "n"
-            },
-            "right": {
-              "type": "Variable",
-              "name": "m"
-            }
-          },
-          "right": {
-            "type": "Variable",
-            "name": "k"
-          }
+          "type": "Number",
+          "value": 0
         }
+      },
+      {
+        "type": "For",
+        "variable": "i",
+        "start": {
+          "type": "Number",
+          "value": 1
+        },
+        "end": {
+          "type": "Variable",
+          "name": "n"
+        },
+        "body": [
+          {
+            "type": "Assign",
+            "variable": "sum",
+            "expression": {
+              "type": "BinaryOp",
+              "op": "+",
+              "left": {
+                "type": "Variable",
+                "name": "sum"
+              },
+              "right": {
+                "type": "Variable",
+                "name": "i"
+              }
+            }
+          }
+        ],
+        "direction": "forward"
       },
       {
         "type": "Print",
@@ -53,23 +60,18 @@
     "section": 1,
     "status": "success",
     "inputs": {
-      "n": 5,
-      "m": 4,
-      "k": 5
+      "n": 5
     },
     "outputs": [
-      14
+      15
     ],
     "variables": {
       "n": 5,
-      "m": 4,
-      "k": 5,
-      "sum": 14
+      "sum": 15,
+      "i": 5
     },
     "read_order": [
-      "n",
-      "m",
-      "k"
+      "n"
     ]
   }
 }
