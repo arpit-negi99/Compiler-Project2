@@ -1303,3 +1303,6 @@ def application(environ, start_response):
 
 if __name__ == "__main__":
     run_server()
+
+# Alias for gunicorn/Render deployment
+app = application
