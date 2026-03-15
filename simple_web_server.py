@@ -1770,8 +1770,9 @@ def application(environ, start_response):
                     start_response('400 Bad Request', [('Content-Type', 'application/json')])
                     return [json.dumps({"error": "Algorithm cannot be empty"}).encode('utf-8')]
                 
+                inputs = {}  # Initialize inputs dict
                 # Parse inputs - support multiple formats
-                raw_inputs = inputs
+                raw_inputs = data.get('inputs', {})
                 
                 # Handle if inputs is already a dict (from JSON)
                 if isinstance(raw_inputs, dict):
@@ -1909,26 +1910,20 @@ def application(environ, start_response):
                     json_data = json.load(f)
                 
                 from nodes.main_codegen import generate_python, generate_cpp
-                from section2.ast_traverser import ASTTraverser
-                from section2.rule_engine import RuleEngine
                 
                 ast_root = json_data.get('ast', {})
                 
                 # Generate Python
                 python_code = ''
                 if target in ['python', 'both']:
-                    engine = RuleEngine(os.path.join(os.path.dirname(__file__), 'section2/rules/python_rules.l'))
-                    traverser = ASTTraverser(engine)
-                    lines = traverser.traverse(ast_root, level=0)
-                    python_code = '\n'.join(lines) + '\n'
+                    rules_dir = os.path.join(os.path.dirname(__file__), 'section2/rules')
+                    python_code = generate_python(ast_root, rules_dir)
                 
                 # Generate C++
                 cpp_code = ''
                 if target in ['cpp', 'both']:
-                    engine = RuleEngine(os.path.join(os.path.dirname(__file__), 'section2/rules/cpp_rules.l'))
-                    traverser = ASTTraverser(engine)
-                    lines = traverser.traverse(ast_root, level=1)
-                    cpp_code = '\n'.join(lines) + '\n'
+                    rules_dir = os.path.join(os.path.dirname(__file__), 'section2/rules')
+                    cpp_code = generate_cpp(ast_root, rules_dir)
                 
                 response_data = {
                     'success': True,
@@ -1953,9 +1948,12 @@ def application(environ, start_response):
                 for line in lines:
                     line = line.strip().upper()
                     if line.startswith('READ'):
-                        parts = line.split()
-                        if len(parts) > 1:
-                            variables.append(parts[1])
+                        parts = line[5:].strip()  # Get everything after READ
+                        # Handle multiple variables: READ n, m, x
+                        for var in parts.split(','):
+                            var = var.strip()
+                            if var and var not in variables:
+                                variables.append(var)
                 
                 response_data = {
                     'success': True,
