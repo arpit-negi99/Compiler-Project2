@@ -451,7 +451,7 @@ PRINT sum</textarea>
                         <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">🎯 Input Values</label>
                         <div class="relative">
                             <input id="inputs" class="form-input w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
-                                   placeholder="e.g., 5 or n=5,m=10 or 5,10" value="5">
+                                   placeholder="e.g., 5 or n=5,m=10 or 5,10">
                             <div class="absolute right-3 top-3 text-gray-400">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
@@ -1159,7 +1159,7 @@ PRINT sum</textarea>
                         <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">🎯 Input Values</label>
                         <div class="relative">
                             <input id="inputs" class="form-input w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
-                                   placeholder="e.g., 5 or n=5,m=10 or 5,10" value="5">
+                                   placeholder="e.g., 5 or n=5,m=10 or 5,10">
                             <div class="absolute right-3 top-3 text-gray-400">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
@@ -1682,7 +1682,12 @@ END</pre>
                 const inputField = document.getElementById('inputs');
                 const vars = result.variables || [];
                 if (vars.length > 0) {
-                    inputField.placeholder = `e.g., ${vars[0]}=5${vars.length > 1 ? ` or ${vars.join('=5,')}=5` : ''}`;
+                    if (vars.length === 1) {
+                        inputField.placeholder = `e.g., ${vars[0]}=5 or 5`;
+                    } else {
+                        const examples = vars.map((v, i) => `${v}=${i + 2}`).join(', ');
+                        inputField.placeholder = `e.g., ${examples} or ${vars.map((v, i) => i + 2).join(',')}`;
+                    }
                 }
                 
             } catch (error) {
