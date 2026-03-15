@@ -1,5 +1,4 @@
 services:
-  # Web Service
   - type: web
     name: algo2code
     env: python
