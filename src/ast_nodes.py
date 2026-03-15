@@ -104,15 +104,16 @@ class AssignNode:
 
 class ForNode:
     """FOR variable = start TO end … END — counted iteration."""
-    def __init__(self, variable, start_expr, end_expr, body):
+    def __init__(self, variable, start_expr, end_expr, body, direction=None):
         self.variable   = variable      # str
         self.start_expr = start_expr    # ExprNode
         self.end_expr   = end_expr      # ExprNode
         self.body       = body          # list[StmtNode]
+        self.direction  = direction     # 'forward' | 'reverse' | None (auto-detected)
 
     def __repr__(self):
         return (f"For({self.variable} = {self.start_expr} TO "
-                f"{self.end_expr}, [{len(self.body)} stmt(s)])")
+                f"{self.end_expr}, [{len(self.body)} stmt(s)], dir={self.direction})")
 
 
 class IfNode:

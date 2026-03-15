@@ -6,10 +6,13 @@ int main(){
     int n;
     cin >> n;
 
-    int m;
-    cin >> m;
+    int sum = 0;
 
-    cout << n + m << endl;
+    for(int i = n; i >= 1; i--){
+        sum = sum + i;
+    }
+
+    cout << sum << endl;
 
     return 0;
 }

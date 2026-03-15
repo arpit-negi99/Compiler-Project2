@@ -48,6 +48,11 @@ For(var, start, end)
     -> for {var} in range({start}, {end}+1):
 ;
 
+ForReverse(var, start, end)
+    BLOCK
+    -> for {var} in range({start}, {end}-1, -1):
+;
+
 While(condition)
     BLOCK
     -> while {condition}:
@@ -65,6 +70,30 @@ IfElse(condition)
     -> if {condition}:
     ELSE
     -> else:
+;
+
+/* ---- Expressions -------------------------------------------- */
+
+BinaryOp(left, op, right)
+    -> ({left} {op} {right})
+;
+
+UnaryOp(op, operand)
+    -> {op}{operand}
+;
+
+Number(value)
+    -> {value}
+;
+
+Variable(name)
+    -> {name}
+;
+
+/* ---- Conditions --------------------------------------------- */
+
+Condition(left, op, right)
+    -> ({left} {op} {right})
 ;
 
 %%

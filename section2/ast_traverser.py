@@ -51,6 +51,11 @@ class ASTTraverser:
             'While'   : self._while,
             'If'      : self._if,
             'IfElse'  : self._if_else,
+            'BinaryOp': self._binary_op,
+            'UnaryOp' : self._unary_op,
+            'Number'  : self._number,
+            'Variable': self._variable,
+            'Condition': self._condition,
         }
         handler = dispatch.get(node.get('type', ''), self._unknown)
         return handler(node, level)
@@ -146,9 +151,13 @@ class ASTTraverser:
     # ----------------------------------------------------------
 
     def _for(self, node, level: int) -> list:
-        rule = self.re.get_rule('For')
+        # Choose rule based on direction
+        direction = node.get('direction', 'forward')
+        rule_name = 'ForReverse' if direction == 'reverse' else 'For'
+        rule = self.re.get_rule(rule_name)
         if not rule:
-            return [self._ind(level) + '# [missing rule: For]']
+            return [self._ind(level) + f'# [missing rule: {rule_name}]']
+        
         # The for-loop variable is declared by the rule (int {var} = …)
         self._declared.add(node.get('variable', ''))
         subs = {
@@ -189,6 +198,46 @@ class ASTTraverser:
 
     def _unknown(self, node, level: int) -> list:
         return [self._ind(level) + f'# [unhandled: {node.get("type","?")}]']
+
+    # ----------------------------------------------------------
+    # Expression handlers
+    # ----------------------------------------------------------
+
+    def _binary_op(self, node, level: int) -> list:
+        rule = self.engine.get_rule('BinaryOp')
+        subs = {
+            'left': self._e(node.get('left')),
+            'op': node.get('op', ''),
+            'right': self._e(node.get('right')),
+        }
+        return self._apply(rule, subs, 'open_lines', level=level)
+
+    def _unary_op(self, node, level: int) -> list:
+        rule = self.engine.get_rule('UnaryOp')
+        subs = {
+            'op': node.get('op', ''),
+            'operand': self._e(node.get('operand')),
+        }
+        return self._apply(rule, subs, 'open_lines', level=level)
+
+    def _number(self, node, level: int) -> list:
+        rule = self.engine.get_rule('Number')
+        subs = {'value': node.get('value', '')}
+        return self._apply(rule, subs, 'open_lines', level=level)
+
+    def _variable(self, node, level: int) -> list:
+        rule = self.engine.get_rule('Variable')
+        subs = {'name': node.get('name', '')}
+        return self._apply(rule, subs, 'open_lines', level=level)
+
+    def _condition(self, node, level: int) -> list:
+        rule = self.engine.get_rule('Condition')
+        subs = {
+            'left': self._e(node.get('left')),
+            'op': node.get('op', ''),
+            'right': self._e(node.get('right')),
+        }
+        return self._apply(rule, subs, 'open_lines', level=level)
 
     # ----------------------------------------------------------
     # Generic BLOCK emitter

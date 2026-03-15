@@ -57,7 +57,8 @@ def _stmt_node_to_dict(node) -> dict:
                 "variable":   node.variable,
                 "start":      _expr_node_to_dict(node.start_expr),
                 "end":        _expr_node_to_dict(node.end_expr),
-                "body":       [_stmt_node_to_dict(s) for s in node.body]}
+                "body":       [_stmt_node_to_dict(s) for s in node.body],
+                "direction":  getattr(node, 'direction', None)}
 
     if isinstance(node, IfNode):
         d = {"type":      "If",

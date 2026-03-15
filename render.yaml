@@ -1,0 +1,10 @@
+services:
+  # Web Service
+  - type: web
+    name: algo2code
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn simple_web_server:app --bind 0.0.0.0:$PORT --workers 1
+    healthCheckPath: /
+    autoDeploy: true

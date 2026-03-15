@@ -59,6 +59,13 @@ For(var, start, end)
     -> }
 ;
 
+ForReverse(var, start, end)
+    BLOCK
+    -> for(int {var} = {start}; {var} >= {end}; {var}--){
+    CLOSE
+    -> }
+;
+
 While(condition)
     BLOCK
     -> while({condition}){
@@ -82,6 +89,30 @@ IfElse(condition)
     -> } else {
     CLOSE
     -> }
+;
+
+/* ---- Expressions -------------------------------------------- */
+
+BinaryOp(left, op, right)
+    -> ({left} {op} {right})
+;
+
+UnaryOp(op, operand)
+    -> {op}{operand}
+;
+
+Number(value)
+    -> {value}
+;
+
+Variable(name)
+    -> {name}
+;
+
+/* ---- Conditions --------------------------------------------- */
+
+Condition(left, op, right)
+    -> ({left} {op} {right})
 ;
 
 %%

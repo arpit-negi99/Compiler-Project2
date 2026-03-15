@@ -124,6 +124,10 @@ class Interpreter:
         start = int(self._eval_expr(node.start_expr))
         end   = int(self._eval_expr(node.end_expr))
         step  = 1 if start <= end else -1
+        
+        # Set direction in AST node for code generation
+        node.direction = 'forward' if step > 0 else 'reverse'
+        
         for i in range(start, end + step, step):
             self.variables[node.variable] = i
             self._exec_stmts(node.body)
