@@ -996,6 +996,28 @@ def run_server(port=8000):
         print("\n🛑 Server stopped")
         httpd.server_close()
 
+def _detect_input_variables(algorithm: str) -> list:
+    """Detect all input variables from READ statements in the algorithm"""
+    detected_vars = []
+    lines = algorithm.split('\n')
+    for line in lines:
+        stripped = line.strip()
+        # Check for READ statement (case-insensitive)
+        if stripped.upper().startswith('READ '):
+            # Extract variable names after READ
+            vars_part = stripped[5:].strip()
+            # Handle multiple variables: READ n, m, x
+            for var in vars_part.split(','):
+                var = var.strip()
+                if var and var not in detected_vars:
+                    detected_vars.append(var)
+    return detected_vars
+
+def _detect_first_input_variable(algorithm: str) -> str:
+    """Detect the first input variable from READ statement"""
+    vars_list = _detect_input_variables(algorithm)
+    return vars_list[0] if vars_list else None
+
 # WSGI application for Render/Gunicorn
 def _get_html_content():
     """Get the HTML content for the main page"""
@@ -1730,27 +1752,131 @@ def application(environ, start_response):
                 algorithm = data.get('algorithm', '')
                 inputs = data.get('inputs', {})
                 
-                success, python_code, cpp_code = run_complete_pipeline(algorithm, inputs)
+                # Fix escaped newlines - handle both literal and JSON escapes
+                algorithm = algorithm.replace('\\\\n', '\n').replace('\\\\r', '\r').replace('\\\\t', '\t')
+                algorithm = algorithm.replace('\\n', '\n').replace('\\r', '\r').replace('\\t', '\t')
                 
-                if success:
-                    # Load simulation results
-                    with open('section1_output.json', 'r') as f:
-                        results = json.load(f)
+                if not algorithm.strip():
+                    start_response('400 Bad Request', [('Content-Type', 'application/json')])
+                    return [json.dumps({"error": "Algorithm cannot be empty"}).encode('utf-8')]
+                
+                # Parse inputs - support multiple formats
+                raw_inputs = inputs
+                
+                # Handle if inputs is already a dict (from JSON)
+                if isinstance(raw_inputs, dict):
+                    inputs = raw_inputs
+                elif isinstance(raw_inputs, (int, float)):
+                    # Single numeric value - detect variable name from algorithm
+                    var_name = _detect_first_input_variable(algorithm) or 'n'
+                    inputs = {var_name: raw_inputs}
+                elif isinstance(raw_inputs, str) and raw_inputs.strip():
+                    inputs_text = raw_inputs.strip()
+                    try:
+                        # Try JSON first
+                        inputs = json.loads(inputs_text)
+                    except:
+                        try:
+                            # Simple format: "n=5,m=6" or "5,6"
+                            if '=' in inputs_text:
+                                # n=5,m=6 format
+                                pairs = inputs_text.split(',')
+                                for pair in pairs:
+                                    if '=' in pair:
+                                        key, value = pair.split('=', 1)
+                                        key = key.strip()
+                                        value = value.strip()
+                                        # Try to convert to int, fallback to float, then string
+                                        try:
+                                            inputs[key] = int(value)
+                                        except ValueError:
+                                            try:
+                                                inputs[key] = float(value)
+                                            except ValueError:
+                                                inputs[key] = value
+                            else:
+                                # Auto-detect variables from algorithm
+                                detected_vars = _detect_input_variables(algorithm)
+                                values = [x.strip() for x in inputs_text.split(',')]
+                                for i, val in enumerate(values):
+                                    if i < len(detected_vars):
+                                        var_name = detected_vars[i]
+                                        # Try to convert to int, fallback to float, then string
+                                        try:
+                                            inputs[var_name] = int(val)
+                                        except ValueError:
+                                            try:
+                                                inputs[var_name] = float(val)
+                                            except ValueError:
+                                                inputs[var_name] = val
+                        except Exception as e:
+                            print(f"Input parsing error: {e}")
+                            inputs = {}
+                
+                # Run only Section 1 (simulation)
+                from src.lexer import Lexer
+                from src.parser import Parser  
+                from src.interpreter import Interpreter
+                from src.serializer import serialize_result
+                
+                try:
+                    # Lexer
+                    lexer = Lexer(algorithm)
+                    tokens = lexer.tokenize()
                     
+                    # Parser
+                    parser = Parser(tokens)
+                    ast = parser.parse()
+                    
+                    # Interpreter
+                    interpreter = Interpreter()
+                    # Ensure inputs is always a dict
+                    if not inputs:
+                        inputs = {}
+                    elif isinstance(inputs, (int, float)):
+                        # Single value - detect variable name from algorithm
+                        var_name = _detect_first_input_variable(algorithm) or 'n'
+                        inputs = {var_name: inputs}
+                    elif isinstance(inputs, str):
+                        # Already processed string to dict above
+                        pass  # inputs is already a dict
+                    # Now inputs should be a dict
+                    interpreter.set_inputs(inputs)
+                    interpreter.execute(ast)
+                    result = interpreter.execution_result
+                    
+                    # Save result
+                    payload = serialize_result(ast, result, algorithm)
+                    with open("section1_output.json", 'w', encoding='utf-8') as fh:
+                        json.dump(payload, fh, indent=2)
+                    
+                    # Detect input variables (using the helper method)
+                    detected_vars = _detect_input_variables(algorithm)
+                    
+                    # Send response
                     response_data = {
-                        'success': True,
-                        'simulation_results': results.get('simulation_results', {}),
-                        'detected_inputs': results.get('detected_inputs', [])
+                        "success": True,
+                        "simulation_results": {
+                            "inputs": result.get('inputs', {}),
+                            "outputs": result.get('outputs', []),
+                            "variables": result.get('variables', {})
+                        },
+                        "detected_inputs": detected_vars
                     }
+                    
                     start_response('200 OK', [('Content-Type', 'application/json')])
                     return [json.dumps(response_data).encode('utf-8')]
-                else:
-                    start_response('400 Bad Request', [('Content-Type', 'application/json')])
-                    return [json.dumps({'success': False, 'error': 'Execution failed'}).encode('utf-8')]
                     
+                except Exception as e:
+                    start_response('500 Internal Server Error', [('Content-Type', 'application/json')])
+                    return [json.dumps({"error": f"Execution error: {str(e)}"}).encode('utf-8')]
+                    
+            except json.JSONDecodeError:
+                start_response('400 Bad Request', [('Content-Type', 'application/json')])
+                return [json.dumps({"error": "Invalid JSON in request body"}).encode('utf-8')]
             except Exception as e:
                 start_response('500 Internal Server Error', [('Content-Type', 'application/json')])
-                return [json.dumps({'success': False, 'error': str(e)}).encode('utf-8')]
+                return [json.dumps({"error": f"Server error: {str(e)}"}).encode('utf-8')]
         
         elif path == '/api/generate':
             try:
