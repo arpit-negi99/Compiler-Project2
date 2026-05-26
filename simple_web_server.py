@@ -38,6 +38,8 @@ class Algo2CodeHandler(BaseHTTPRequestHandler):
         
         if parsed_path.path == '/api/execute':
             self.handle_execute()
+        elif parsed_path.path == '/api/preview-ast':
+            self.handle_preview_ast()
         elif parsed_path.path == '/api/generate':
             self.handle_generate()
         elif parsed_path.path == '/api/detect-variables':
@@ -168,7 +170,8 @@ class Algo2CodeHandler(BaseHTTPRequestHandler):
                         "outputs": result.get('outputs', []),
                         "variables": result.get('variables', {})
                     },
-                    "detected_inputs": detected_vars
+                    "detected_inputs": detected_vars,
+                    "ast": payload.get('ast', {})
                 }
                 
                 self.send_json_response(response_data)
@@ -288,6 +291,32 @@ class Algo2CodeHandler(BaseHTTPRequestHandler):
             self.send_json_response({
                 "error": f"Server error: {str(e)}"
             }, status=500)
+
+    def handle_preview_ast(self):
+        """Handle AST preview request without executing the program"""
+        try:
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            request_data = json.loads(post_data.decode('utf-8'))
+
+            algorithm = request_data.get('algorithm', '')
+            algorithm = algorithm.replace('\\\\n', '\n').replace('\\\\r', '\r').replace('\\\\t', '\t')
+            algorithm = algorithm.replace('\\n', '\n').replace('\\r', '\r').replace('\\t', '\t')
+
+            if not algorithm.strip():
+                self.send_json_response({"error": "Algorithm cannot be empty"}, status=400)
+                return
+
+            ast_payload = _parse_algorithm_ast(algorithm)
+            self.send_json_response({
+                "success": True,
+                "ast": ast_payload
+            })
+
+        except json.JSONDecodeError:
+            self.send_json_response({"error": "Invalid JSON in request body"}, status=400)
+        except Exception as e:
+            self.send_json_response({"error": f"AST preview error: {str(e)}"}, status=400)
     
     def _detect_input_variables(self, algorithm: str) -> list:
         """Detect all input variables from READ statements in the algorithm"""
@@ -400,6 +429,44 @@ class Algo2CodeHandler(BaseHTTPRequestHandler):
         .notification-message { flex: 1; font-weight: 500; }
         .notification-close { background: rgba(255, 255, 255, 0.2); border: none; color: white; width: 2rem; height: 2rem; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.2s; }
         .notification-close:hover { background: rgba(255, 255, 255, 0.3); }
+        .ast-controls { display: flex; justify-content: flex-end; margin-top: 0.75rem; }
+        .ast-toggle-btn { background: linear-gradient(135deg, #f97316, #ea580c); color: white; border: none; padding: 0.75rem 1rem; border-radius: 0.75rem; font-weight: 700; cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease; box-shadow: 0 8px 20px rgba(249, 115, 22, 0.25); }
+        .ast-toggle-btn:hover { transform: translateY(-1px); box-shadow: 0 12px 25px rgba(249, 115, 22, 0.3); }
+        .ast-toggle-btn:active { transform: translateY(0); }
+        .ast-modal { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; padding: 1.25rem; background: rgba(2, 6, 23, 0.72); backdrop-filter: blur(10px); opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.28s ease, visibility 0.28s ease; }
+        .ast-modal.open { opacity: 1; visibility: visible; pointer-events: auto; }
+        .ast-modal-dialog { width: min(1100px, 96vw); max-height: 90vh; background: radial-gradient(circle at top, rgba(59, 130, 246, 0.14), rgba(15, 23, 42, 0.98) 50%); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 1.25rem; box-shadow: 0 30px 80px rgba(15, 23, 42, 0.55); overflow: hidden; transform: translateY(20px) scale(0.97); transition: transform 0.28s ease; display: flex; flex-direction: column; }
+        .ast-modal.open .ast-modal-dialog { transform: translateY(0) scale(1); }
+        .ast-modal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1rem 1.25rem; border-bottom: 1px solid rgba(148, 163, 184, 0.18); color: white; }
+        .ast-modal-title { font-size: 1.15rem; font-weight: 800; }
+        .ast-modal-subtitle { margin-top: 0.25rem; font-size: 0.85rem; color: #cbd5e1; }
+        .ast-modal-close { border: none; background: rgba(255, 255, 255, 0.12); color: white; width: 2.5rem; height: 2.5rem; border-radius: 999px; font-size: 1.4rem; line-height: 1; cursor: pointer; transition: transform 0.2s ease, background 0.2s ease; }
+        .ast-modal-close:hover { transform: scale(1.05); background: rgba(255, 255, 255, 0.2); }
+        .ast-modal-body { position: relative; flex: 1; min-height: 0; padding: 1rem; overflow: auto; }
+        .ast-tree-frame { min-width: 100%; min-height: 100%; display: flex; align-items: center; justify-content: center; }
+        .ast-svg { width: 100%; height: auto; min-height: 420px; overflow: visible; }
+        .ast-svg-line { stroke: rgba(226, 232, 240, 0.72); stroke-width: 3.5; stroke-linecap: round; }
+        .ast-svg-node { fill: #1d4ed8; filter: url(#ast-shadow); }
+        .ast-svg-node-label { fill: white; font-size: 13px; font-weight: 800; text-anchor: middle; dominant-baseline: middle; pointer-events: none; }
+        .ast-svg-node-sub { fill: rgba(255, 255, 255, 0.85); font-size: 10px; font-weight: 700; text-anchor: middle; dominant-baseline: middle; pointer-events: none; }
+        .ast-svg-group { animation: astNodePop 0.36s ease both; transform-origin: center; }
+        .ast-svg-group:nth-child(2) { animation-delay: 0.02s; }
+        .ast-svg-group:nth-child(3) { animation-delay: 0.04s; }
+        .ast-svg-group:nth-child(4) { animation-delay: 0.06s; }
+        .ast-svg-group:nth-child(5) { animation-delay: 0.08s; }
+        @keyframes astNodePop {
+            from { opacity: 0; transform: translateY(12px) scale(0.92); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .dark .ast-svg-line { stroke: rgba(148, 163, 184, 0.72); }
+        .dark .ast-svg-node { fill: #2563eb; }
+        @media (max-width: 768px) {
+            .ast-modal-dialog { width: 100%; max-height: 92vh; border-radius: 1rem; }
+            .ast-modal-header { padding: 0.9rem 1rem; }
+            .ast-modal-body { padding: 0.75rem; }
+            .ast-svg { min-height: 340px; }
+        }
+        .dark .ast-toggle-btn { box-shadow: 0 8px 20px rgba(249, 115, 22, 0.16); }
     </style>
 </head>
 <body class="bg-gray-50">
@@ -468,6 +535,10 @@ PRINT sum</textarea>
                         <button onclick="clearResults()" class="btn-secondary px-6 py-3 font-semibold">
                             🗑️ Clear
                         </button>
+                    </div>
+
+                    <div id="ast-controls" class="ast-controls hidden">
+                        <button id="ast-toggle-btn" class="ast-toggle-btn" onclick="toggleAstVisualization()">🌳 View AST</button>
                     </div>
                 </div>
                 
@@ -712,9 +783,30 @@ END</pre>
         </footer>
     </div>
 
+    <div id="ast-modal" class="ast-modal" aria-hidden="true">
+        <div class="ast-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="ast-modal-title">
+            <div class="ast-modal-header">
+                <div>
+                    <div id="ast-modal-title" class="ast-modal-title">AST Visualization</div>
+                    <div id="ast-summary" class="ast-modal-subtitle">Execute an algorithm to inspect the AST.</div>
+                </div>
+                <button class="ast-modal-close" onclick="closeAstModal()" aria-label="Close AST view">×</button>
+            </div>
+            <div class="ast-modal-body">
+                <div class="ast-tree-frame">
+                    <div id="ast-tree"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         let currentTab = 'python';
         let notificationTimeout;
+        let currentAstData = null;
+        let astVisible = false;
+        let astPreviewTimeout = null;
+        let astPreviewRequestId = 0;
         
         // Notification system
         function showNotification(message, type = 'success', duration = 4000) {
@@ -795,15 +887,283 @@ END</pre>
             document.getElementById(tab + '-content').classList.remove('hidden');
             document.getElementById(tab + '-tab').classList.remove('btn-secondary');
             document.getElementById(tab + '-tab').classList.add('btn-primary');
-            
+
             currentTab = tab;
         }
+
+        function createSvgElement(name, attributes = {}) {
+            const element = document.createElementNS('http://www.w3.org/2000/svg', name);
+            Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, value));
+            return element;
+        }
+
+        function shortLabel(value, maxLength = 12) {
+            const text = String(value);
+            return text.length > maxLength ? text.slice(0, maxLength - 1) + '…' : text;
+        }
+
+        function buildAstTreeData(node, label = 'AST') {
+            if (node === null || node === undefined) {
+                return { title: label || 'null', subtitle: '', children: [] };
+            }
+
+            if (Array.isArray(node)) {
+                return {
+                    title: label || 'Array',
+                    subtitle: `${node.length} items`,
+                    children: node.map((item, index) => buildAstTreeData(item, `${label || 'item'} ${index + 1}`)),
+                };
+            }
+
+                if (typeof node !== 'object') {
+                    return { title: label || String(node), subtitle: String(node), children: [] };
+                }
+
+                const children = [];
+                const title = node.type ? node.type : (label || 'Object');
+                const subtitle = node.type && label && label !== node.type ? label : '';
+
+                Object.entries(node).forEach(([key, value]) => {
+                    if (key === 'type') return;
+
+                    if (Array.isArray(value)) {
+                        children.push({
+                            title: key,
+                            subtitle: `${value.length} item${value.length === 1 ? '' : 's'}`,
+                            children: value.length ? value.map((item, index) => buildAstTreeData(item, `${key}[${index + 1}]`)) : [],
+                        });
+                    } else if (value && typeof value === 'object') {
+                        children.push(buildAstTreeData(value, key));
+                    } else {
+                        children.push({
+                            title: key,
+                            subtitle: value === null || value === undefined ? 'null' : String(value),
+                            children: [],
+                        });
+                    }
+                });
+
+                return { title, subtitle, children };
+            }
+
+            function layoutAstTree(node, depth = 0, state = { nextLeaf: 0, nodes: [], edges: [] }) {
+                node.depth = depth;
+                node.y = depth * 132;
+
+                if (!node.children || !node.children.length) {
+                    node.x = state.nextLeaf * 190;
+                    state.nextLeaf += 1;
+                } else {
+                    node.children.forEach(child => layoutAstTree(child, depth + 1, state));
+                    node.x = (node.children[0].x + node.children[node.children.length - 1].x) / 2;
+                    node.children.forEach(child => state.edges.push({ parent: node, child }));
+                }
+
+                state.nodes.push(node);
+                return state;
+            }
+
+            function getNodeFill(depth, title) {
+                if (depth === 0) return '#0f766e';
+                const lower = (title || '').toLowerCase();
+                if (lower.includes('if') || lower.includes('for') || lower.includes('while')) return '#7c3aed';
+                if (lower.includes('assign') || lower.includes('read') || lower.includes('print')) return '#2563eb';
+                if (lower.includes('binary') || lower.includes('unary') || lower.includes('condition')) return '#f59e0b';
+                return depth === 1 ? '#1d4ed8' : '#3b82f6';
+            }
+
+            function renderAstVisualization(ast) {
+                const container = document.getElementById('ast-tree');
+                const summary = document.getElementById('ast-summary');
+
+                container.innerHTML = '';
+
+                if (!ast || typeof ast !== 'object') {
+                    summary.textContent = 'No AST data available for this run.';
+                    const empty = document.createElement('div');
+                    empty.style.color = '#cbd5e1';
+                    empty.style.textAlign = 'center';
+                    empty.style.padding = '3rem 1rem';
+                    empty.textContent = 'Run an algorithm to generate the AST.';
+                    container.appendChild(empty);
+                    return;
+                }
+
+                const treeData = buildAstTreeData(ast, ast.type || 'AST');
+                const layout = layoutAstTree(treeData);
+                const nodes = layout.nodes;
+                const edges = layout.edges;
+                const nodeRadius = 32;
+                const xMin = Math.min(...nodes.map(node => node.x));
+                const xMax = Math.max(...nodes.map(node => node.x));
+                const yMax = Math.max(...nodes.map(node => node.y));
+                const xShift = 80 - xMin;
+                const yShift = 78;
+                const width = Math.max(860, xMax - xMin + 180);
+                const height = Math.max(500, yMax + 180);
+
+                summary.textContent = `Root: ${ast.type || 'Unknown'} • Top-level statements: ${Array.isArray(ast.statements) ? ast.statements.length : 0}`;
+
+                const svg = createSvgElement('svg', {
+                    class: 'ast-svg',
+                    viewBox: `0 0 ${width} ${height}`,
+                    preserveAspectRatio: 'xMidYMid meet',
+                    role: 'img',
+                    'aria-label': 'AST tree diagram',
+                });
+
+                const defs = createSvgElement('defs');
+                const shadow = createSvgElement('filter', { id: 'ast-shadow', x: '-20%', y: '-20%', width: '160%', height: '160%' });
+                shadow.appendChild(createSvgElement('feDropShadow', { dx: '0', dy: '8', stdDeviation: '8', 'flood-color': '#0f172a', 'flood-opacity': '0.35' }));
+                defs.appendChild(shadow);
+                svg.appendChild(defs);
+
+                edges.forEach(({ parent, child }) => {
+                    svg.appendChild(createSvgElement('line', {
+                        x1: parent.x + xShift,
+                        y1: parent.y + yShift + nodeRadius,
+                        x2: child.x + xShift,
+                        y2: child.y + yShift - nodeRadius,
+                        class: 'ast-svg-line',
+                    }));
+                });
+
+                nodes.forEach(node => {
+                    const group = createSvgElement('g', { class: 'ast-svg-group' });
+                    group.appendChild(createSvgElement('circle', {
+                        cx: node.x + xShift,
+                        cy: node.y + yShift,
+                        r: nodeRadius,
+                        class: 'ast-svg-node',
+                        fill: getNodeFill(node.depth, node.title),
+                    }));
+
+                    const primary = createSvgElement('text', {
+                        x: node.x + xShift,
+                        y: node.y + yShift - (node.subtitle ? 4 : 0),
+                        class: 'ast-svg-node-label',
+                    });
+                    primary.textContent = shortLabel(node.title, 14);
+                    group.appendChild(primary);
+
+                    if (node.subtitle) {
+                        const sub = createSvgElement('text', {
+                            x: node.x + xShift,
+                            y: node.y + yShift + 14,
+                            class: 'ast-svg-node-sub',
+                        });
+                        sub.textContent = shortLabel(node.subtitle, 16);
+                        group.appendChild(sub);
+                    }
+
+                    svg.appendChild(group);
+                });
+
+                container.appendChild(svg);
+            }
+
+            function openAstModal() {
+                const modal = document.getElementById('ast-modal');
+                modal.classList.add('open');
+                modal.setAttribute('aria-hidden', 'false');
+                document.body.style.overflow = 'hidden';
+            }
+
+            function toggleAstVisualization() {
+                if (!currentAstData) {
+                    showNotification('Run an algorithm first to build the AST.', 'error');
+                    return;
+                }
+
+                renderAstVisualization(currentAstData);
+                openAstModal();
+            }
+
+            function closeAstModal() {
+                const modal = document.getElementById('ast-modal');
+                modal.classList.remove('open');
+                modal.setAttribute('aria-hidden', 'true');
+                document.body.style.overflow = '';
+            }
+
+            async function refreshAstPreview() {
+                const algorithm = document.getElementById('algorithm').value;
+                const controls = document.getElementById('ast-controls');
+                const modal = document.getElementById('ast-modal');
+                const requestId = ++astPreviewRequestId;
+
+                if (!algorithm.trim()) {
+                    currentAstData = null;
+                    controls.classList.add('hidden');
+                    if (modal.classList.contains('open')) {
+                        renderAstVisualization(null);
+                    }
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/preview-ast', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ algorithm }),
+                    });
+
+                    const result = await response.json();
+                    if (requestId !== astPreviewRequestId) {
+                        return;
+                    }
+
+                    if (!response.ok) {
+                        throw new Error(result.error || 'AST preview failed');
+                    }
+
+                    currentAstData = result.ast;
+                    controls.classList.remove('hidden');
+
+                    if (modal.classList.contains('open')) {
+                        renderAstVisualization(currentAstData);
+                    } else {
+                        document.getElementById('ast-summary').textContent = 'AST updated. Press the button to inspect it.';
+                    }
+                } catch (error) {
+                    if (requestId !== astPreviewRequestId) {
+                        return;
+                    }
+
+                    currentAstData = null;
+                    controls.classList.add('hidden');
+                    if (modal.classList.contains('open')) {
+                        renderAstVisualization(null);
+                    }
+                }
+            }
+
+            function scheduleAstPreview() {
+                if (astPreviewTimeout) {
+                    clearTimeout(astPreviewTimeout);
+                }
+                astPreviewTimeout = setTimeout(refreshAstPreview, 320);
+            }
+
+            document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape') {
+                    closeAstModal();
+                }
+            });
         
         function clearResults() {
             document.getElementById('simulation-results').classList.add('hidden');
             document.getElementById('code-generation').classList.add('hidden');
             document.getElementById('code-output').classList.add('hidden');
             document.getElementById('error').classList.add('hidden');
+            document.getElementById('ast-tree').innerHTML = '';
+            document.getElementById('ast-summary').textContent = 'Execute an algorithm to inspect the AST.';
+            currentAstData = null;
+            closeAstModal();
+            astPreviewRequestId += 1;
+            scheduleAstPreview();
         }
         
         async function executeWithInputs(algorithm, inputs) {
@@ -827,6 +1187,12 @@ END</pre>
             document.getElementById('sim-outputs').textContent = JSON.stringify(result.simulation_results.outputs, null, 2);
             document.getElementById('sim-variables').textContent = JSON.stringify(result.simulation_results.variables, null, 2);
             document.getElementById('input-vars').textContent = result.detected_inputs.join(', ');
+            currentAstData = result.ast;
+            document.getElementById('ast-controls').classList.remove('hidden');
+            document.getElementById('ast-summary').textContent = 'Press the button to reveal the AST.';
+            if (document.getElementById('ast-modal').classList.contains('open')) {
+                renderAstVisualization(currentAstData);
+            }
             
             // Show code generation section
             document.getElementById('code-generation').classList.remove('hidden');
@@ -880,7 +1246,10 @@ END</pre>
                                 });
                                 
                                 // Now execute with proper inputs
-                                executeWithInputs(algorithm, inputs);
+                                executeWithInputs(algorithm, inputs).catch((error) => {
+                                    errorDiv.textContent = '❌ ' + error.message;
+                                    errorDiv.classList.remove('hidden');
+                                });
                             })
                             .catch(() => {
                                 // Fallback to default variable names
@@ -890,7 +1259,10 @@ END</pre>
                                         inputs[varNames[i]] = val;
                                     }
                                 });
-                                executeWithInputs(algorithm, inputs);
+                                executeWithInputs(algorithm, inputs).catch((error) => {
+                                    errorDiv.textContent = '❌ ' + error.message;
+                                    errorDiv.classList.remove('hidden');
+                                });
                             });
                             
                             return; // Exit early, we'll call executeWithInputs asynchronously
@@ -899,7 +1271,7 @@ END</pre>
                 }
                 
                 // Execute with parsed inputs
-                executeWithInputs(algorithm, inputs);
+                await executeWithInputs(algorithm, inputs);
                 
             } catch (error) {
                 errorDiv.textContent = '❌ ' + error.message;
@@ -952,6 +1324,51 @@ END</pre>
                 showNotification(error.message || 'Code generation failed', 'error');
             }
         }
+
+        async function detectVariables() {
+            const algorithm = document.getElementById('algorithm').value;
+
+            try {
+                const response = await fetch('/api/detect-variables', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ algorithm }),
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.error || 'Variable detection failed');
+                }
+
+                const inputField = document.getElementById('inputs');
+                const vars = result.variables || [];
+                if (vars.length > 0) {
+                    if (vars.length === 1) {
+                        inputField.placeholder = `e.g., ${vars[0]}=5 or 5`;
+                    } else {
+                        const examples = vars.map((v, i) => `${v}=${i + 2}`).join(', ');
+                        inputField.placeholder = `e.g., ${examples} or ${vars.map((v, i) => i + 2).join(',')}`;
+                    }
+                }
+
+            } catch (error) {
+                console.error('Variable detection failed:', error);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const algorithmTextarea = document.getElementById('algorithm');
+            algorithmTextarea.addEventListener('input', () => {
+                detectVariables();
+                scheduleAstPreview();
+            });
+
+            detectVariables();
+            scheduleAstPreview();
+        });
     </script>
 </body>
 </html>
@@ -1017,6 +1434,19 @@ def _detect_first_input_variable(algorithm: str) -> str:
     """Detect the first input variable from READ statement"""
     vars_list = _detect_input_variables(algorithm)
     return vars_list[0] if vars_list else None
+
+
+def _parse_algorithm_ast(algorithm: str) -> dict:
+    """Parse pseudo-code into an AST payload without running the interpreter."""
+    from src.lexer import Lexer
+    from src.parser import Parser
+    from src.serializer import serialize_result
+
+    lexer = Lexer(algorithm)
+    tokens = lexer.tokenize()
+    parser = Parser(tokens)
+    ast = parser.parse()
+    return serialize_result(ast, {"section": 1, "status": "preview"}, algorithm).get('ast', {})
 
 # WSGI application for Render/Gunicorn
 def _get_html_content():
@@ -1108,6 +1538,44 @@ def _get_html_content():
         .notification-message { flex: 1; font-weight: 500; }
         .notification-close { background: rgba(255, 255, 255, 0.2); border: none; color: white; width: 2rem; height: 2rem; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.2s; }
         .notification-close:hover { background: rgba(255, 255, 255, 0.3); }
+        .ast-controls { display: flex; justify-content: flex-end; margin-top: 0.75rem; }
+        .ast-toggle-btn { background: linear-gradient(135deg, #f97316, #ea580c); color: white; border: none; padding: 0.75rem 1rem; border-radius: 0.75rem; font-weight: 700; cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease; box-shadow: 0 8px 20px rgba(249, 115, 22, 0.25); }
+        .ast-toggle-btn:hover { transform: translateY(-1px); box-shadow: 0 12px 25px rgba(249, 115, 22, 0.3); }
+        .ast-toggle-btn:active { transform: translateY(0); }
+        .ast-modal { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; padding: 1.25rem; background: rgba(2, 6, 23, 0.72); backdrop-filter: blur(10px); opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.28s ease, visibility 0.28s ease; }
+        .ast-modal.open { opacity: 1; visibility: visible; pointer-events: auto; }
+        .ast-modal-dialog { width: min(1100px, 96vw); max-height: 90vh; background: radial-gradient(circle at top, rgba(59, 130, 246, 0.14), rgba(15, 23, 42, 0.98) 50%); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 1.25rem; box-shadow: 0 30px 80px rgba(15, 23, 42, 0.55); overflow: hidden; transform: translateY(20px) scale(0.97); transition: transform 0.28s ease; display: flex; flex-direction: column; }
+        .ast-modal.open .ast-modal-dialog { transform: translateY(0) scale(1); }
+        .ast-modal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1rem 1.25rem; border-bottom: 1px solid rgba(148, 163, 184, 0.18); color: white; }
+        .ast-modal-title { font-size: 1.15rem; font-weight: 800; }
+        .ast-modal-subtitle { margin-top: 0.25rem; font-size: 0.85rem; color: #cbd5e1; }
+        .ast-modal-close { border: none; background: rgba(255, 255, 255, 0.12); color: white; width: 2.5rem; height: 2.5rem; border-radius: 999px; font-size: 1.4rem; line-height: 1; cursor: pointer; transition: transform 0.2s ease, background 0.2s ease; }
+        .ast-modal-close:hover { transform: scale(1.05); background: rgba(255, 255, 255, 0.2); }
+        .ast-modal-body { position: relative; flex: 1; min-height: 0; padding: 1rem; overflow: auto; }
+        .ast-tree-frame { min-width: 100%; min-height: 100%; display: flex; align-items: center; justify-content: center; }
+        .ast-svg { width: 100%; height: auto; min-height: 420px; overflow: visible; }
+        .ast-svg-line { stroke: rgba(226, 232, 240, 0.72); stroke-width: 3.5; stroke-linecap: round; }
+        .ast-svg-node { fill: #1d4ed8; filter: url(#ast-shadow); }
+        .ast-svg-node-label { fill: white; font-size: 13px; font-weight: 800; text-anchor: middle; dominant-baseline: middle; pointer-events: none; }
+        .ast-svg-node-sub { fill: rgba(255, 255, 255, 0.85); font-size: 10px; font-weight: 700; text-anchor: middle; dominant-baseline: middle; pointer-events: none; }
+        .ast-svg-group { animation: astNodePop 0.36s ease both; transform-origin: center; }
+        .ast-svg-group:nth-child(2) { animation-delay: 0.02s; }
+        .ast-svg-group:nth-child(3) { animation-delay: 0.04s; }
+        .ast-svg-group:nth-child(4) { animation-delay: 0.06s; }
+        .ast-svg-group:nth-child(5) { animation-delay: 0.08s; }
+        @keyframes astNodePop {
+            from { opacity: 0; transform: translateY(12px) scale(0.92); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .dark .ast-svg-line { stroke: rgba(148, 163, 184, 0.72); }
+        .dark .ast-svg-node { fill: #2563eb; }
+        @media (max-width: 768px) {
+            .ast-modal-dialog { width: 100%; max-height: 92vh; border-radius: 1rem; }
+            .ast-modal-header { padding: 0.9rem 1rem; }
+            .ast-modal-body { padding: 0.75rem; }
+            .ast-svg { min-height: 340px; }
+        }
+        .dark .ast-toggle-btn { box-shadow: 0 8px 20px rgba(249, 115, 22, 0.16); }
     </style>
 </head>
 <body class="bg-gray-50">
@@ -1176,6 +1644,10 @@ PRINT sum</textarea>
                         <button onclick="clearResults()" class="btn-secondary px-6 py-3 font-semibold">
                             🗑️ Clear
                         </button>
+                    </div>
+
+                    <div id="ast-controls" class="ast-controls hidden">
+                        <button id="ast-toggle-btn" class="ast-toggle-btn" onclick="toggleAstVisualization()">🌳 View AST</button>
                     </div>
                 </div>
                 
@@ -1420,9 +1892,28 @@ END</pre>
         </footer>
     </div>
 
+    <div id="ast-modal" class="ast-modal" aria-hidden="true">
+        <div class="ast-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="ast-modal-title">
+            <div class="ast-modal-header">
+                <div>
+                    <div id="ast-modal-title" class="ast-modal-title">AST Visualization</div>
+                    <div id="ast-summary" class="ast-modal-subtitle">Execute an algorithm to inspect the AST.</div>
+                </div>
+                <button class="ast-modal-close" onclick="closeAstModal()" aria-label="Close AST view">×</button>
+            </div>
+            <div class="ast-modal-body">
+                <div class="ast-tree-frame">
+                    <div id="ast-tree"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         let currentTab = 'python';
         let notificationTimeout;
+        let currentAstData = null;
+        let astVisible = false;
         
         // Notification system
         function showNotification(message, type = 'success', duration = 4000) {
@@ -1506,12 +1997,273 @@ END</pre>
             
             currentTab = tab;
         }
+
+        function createSvgElement(name, attributes = {}) {
+            const element = document.createElementNS('http://www.w3.org/2000/svg', name);
+            Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, value));
+            return element;
+        }
+
+        function shortLabel(value, maxLength = 12) {
+            const text = String(value);
+            return text.length > maxLength ? text.slice(0, maxLength - 1) + '…' : text;
+        }
+
+        function buildAstTreeData(node, label = 'AST') {
+            if (node === null || node === undefined) {
+                return { title: label || 'null', subtitle: '', children: [] };
+            }
+
+            if (Array.isArray(node)) {
+                return {
+                    title: label || 'Array',
+                    subtitle: `${node.length} items`,
+                    children: node.map((item, index) => buildAstTreeData(item, `${label || 'item'} ${index + 1}`)),
+                };
+            }
+
+            if (typeof node !== 'object') {
+                return { title: label || String(node), subtitle: String(node), children: [] };
+            }
+
+            const children = [];
+            const title = node.type ? node.type : (label || 'Object');
+            const subtitle = node.type && label && label !== node.type ? label : '';
+
+            Object.entries(node).forEach(([key, value]) => {
+                if (key === 'type') return;
+                if (Array.isArray(value)) {
+                    children.push({
+                        title: key,
+                        subtitle: `${value.length} item${value.length === 1 ? '' : 's'}`,
+                        children: value.length ? value.map((item, index) => buildAstTreeData(item, `${key}[${index + 1}]`)) : [],
+                    });
+                } else if (value && typeof value === 'object') {
+                    children.push(buildAstTreeData(value, key));
+                } else {
+                    children.push({ title: key, subtitle: value === null || value === undefined ? 'null' : String(value), children: [] });
+                }
+            });
+
+            return { title, subtitle, children };
+        }
+
+        function layoutAstTree(node, depth = 0, state = { nextLeaf: 0, nodes: [], edges: [] }) {
+            node.depth = depth;
+            node.y = depth * 132;
+            if (!node.children || !node.children.length) {
+                node.x = state.nextLeaf * 190;
+                state.nextLeaf += 1;
+            } else {
+                node.children.forEach(child => layoutAstTree(child, depth + 1, state));
+                node.x = (node.children[0].x + node.children[node.children.length - 1].x) / 2;
+                node.children.forEach(child => state.edges.push({ parent: node, child }));
+            }
+            state.nodes.push(node);
+            return state;
+        }
+
+        function getNodeFill(depth, title) {
+            if (depth === 0) return '#0f766e';
+            const lower = (title || '').toLowerCase();
+            if (lower.includes('if') || lower.includes('for') || lower.includes('while')) return '#7c3aed';
+            if (lower.includes('assign') || lower.includes('read') || lower.includes('print')) return '#2563eb';
+            if (lower.includes('binary') || lower.includes('unary') || lower.includes('condition')) return '#f59e0b';
+            return depth === 1 ? '#1d4ed8' : '#3b82f6';
+        }
+
+        function renderAstVisualization(ast) {
+            const container = document.getElementById('ast-tree');
+            const summary = document.getElementById('ast-summary');
+
+            container.innerHTML = '';
+
+            if (!ast || typeof ast !== 'object') {
+                summary.textContent = 'No AST data available for this run.';
+                const empty = document.createElement('div');
+                empty.style.color = '#cbd5e1';
+                empty.style.textAlign = 'center';
+                empty.style.padding = '3rem 1rem';
+                empty.textContent = 'Run an algorithm to generate the AST.';
+                container.appendChild(empty);
+                return;
+            }
+
+            const treeData = buildAstTreeData(ast, ast.type || 'AST');
+            const layout = layoutAstTree(treeData);
+            const nodes = layout.nodes;
+            const edges = layout.edges;
+            const nodeRadius = 32;
+            const xMin = Math.min(...nodes.map(node => node.x));
+            const xMax = Math.max(...nodes.map(node => node.x));
+            const yMax = Math.max(...nodes.map(node => node.y));
+            const xShift = 80 - xMin;
+            const yShift = 78;
+            const width = Math.max(860, xMax - xMin + 180);
+            const height = Math.max(500, yMax + 180);
+
+            summary.textContent = `Root: ${ast.type || 'Unknown'} • Top-level statements: ${Array.isArray(ast.statements) ? ast.statements.length : 0}`;
+
+            const svg = createSvgElement('svg', {
+                class: 'ast-svg',
+                viewBox: `0 0 ${width} ${height}`,
+                preserveAspectRatio: 'xMidYMid meet',
+                role: 'img',
+                'aria-label': 'AST tree diagram',
+            });
+
+            const defs = createSvgElement('defs');
+            const shadow = createSvgElement('filter', { id: 'ast-shadow', x: '-20%', y: '-20%', width: '160%', height: '160%' });
+            shadow.appendChild(createSvgElement('feDropShadow', { dx: '0', dy: '8', stdDeviation: '8', 'flood-color': '#0f172a', 'flood-opacity': '0.35' }));
+            defs.appendChild(shadow);
+            svg.appendChild(defs);
+
+            edges.forEach(({ parent, child }) => {
+                svg.appendChild(createSvgElement('line', {
+                    x1: parent.x + xShift,
+                    y1: parent.y + yShift + nodeRadius,
+                    x2: child.x + xShift,
+                    y2: child.y + yShift - nodeRadius,
+                    class: 'ast-svg-line',
+                }));
+            });
+
+            nodes.forEach(node => {
+                const group = createSvgElement('g', { class: 'ast-svg-group' });
+                group.appendChild(createSvgElement('circle', {
+                    cx: node.x + xShift,
+                    cy: node.y + yShift,
+                    r: nodeRadius,
+                    class: 'ast-svg-node',
+                    fill: getNodeFill(node.depth, node.title),
+                }));
+
+                const primary = createSvgElement('text', {
+                    x: node.x + xShift,
+                    y: node.y + yShift - (node.subtitle ? 4 : 0),
+                    class: 'ast-svg-node-label',
+                });
+                primary.textContent = shortLabel(node.title, 14);
+                group.appendChild(primary);
+
+                if (node.subtitle) {
+                    const sub = createSvgElement('text', {
+                        x: node.x + xShift,
+                        y: node.y + yShift + 14,
+                        class: 'ast-svg-node-sub',
+                    });
+                    sub.textContent = shortLabel(node.subtitle, 16);
+                    group.appendChild(sub);
+                }
+
+                svg.appendChild(group);
+            });
+
+            container.appendChild(svg);
+        }
+
+        function openAstModal() {
+            const modal = document.getElementById('ast-modal');
+            modal.classList.add('open');
+            modal.setAttribute('aria-hidden', 'false');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function toggleAstVisualization() {
+            if (!currentAstData) {
+                showNotification('Run an algorithm first to build the AST.', 'error');
+                return;
+            }
+
+            renderAstVisualization(currentAstData);
+            openAstModal();
+        }
+
+        function closeAstModal() {
+            const modal = document.getElementById('ast-modal');
+            modal.classList.remove('open');
+            modal.setAttribute('aria-hidden', 'true');
+            document.body.style.overflow = '';
+        }
+
+        async function refreshAstPreview() {
+            const algorithm = document.getElementById('algorithm').value;
+            const controls = document.getElementById('ast-controls');
+            const modal = document.getElementById('ast-modal');
+            const requestId = ++astPreviewRequestId;
+
+            if (!algorithm.trim()) {
+                currentAstData = null;
+                controls.classList.add('hidden');
+                if (modal.classList.contains('open')) {
+                    renderAstVisualization(null);
+                }
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/preview-ast', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ algorithm }),
+                });
+
+                const result = await response.json();
+                if (requestId !== astPreviewRequestId) {
+                    return;
+                }
+
+                if (!response.ok) {
+                    throw new Error(result.error || 'AST preview failed');
+                }
+
+                currentAstData = result.ast;
+                controls.classList.remove('hidden');
+
+                if (modal.classList.contains('open')) {
+                    renderAstVisualization(currentAstData);
+                } else {
+                    document.getElementById('ast-summary').textContent = 'AST updated. Press the button to inspect it.';
+                }
+            } catch (error) {
+                if (requestId !== astPreviewRequestId) {
+                    return;
+                }
+
+                currentAstData = null;
+                controls.classList.add('hidden');
+                if (modal.classList.contains('open')) {
+                    renderAstVisualization(null);
+                }
+            }
+        }
+
+        function scheduleAstPreview() {
+            if (astPreviewTimeout) {
+                clearTimeout(astPreviewTimeout);
+            }
+            astPreviewTimeout = setTimeout(refreshAstPreview, 320);
+        }
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                closeAstModal();
+            }
+        });
         
         function clearResults() {
             document.getElementById('simulation-results').classList.add('hidden');
             document.getElementById('code-generation').classList.add('hidden');
             document.getElementById('code-output').classList.add('hidden');
             document.getElementById('error').classList.add('hidden');
+            document.getElementById('ast-tree').innerHTML = '';
+            document.getElementById('ast-summary').textContent = 'Execute an algorithm to inspect the AST.';
+            currentAstData = null;
+            closeAstModal();
+            astPreviewRequestId += 1;
+            scheduleAstPreview();
         }
         
         async function executeWithInputs(algorithm, inputs) {
@@ -1535,6 +2287,12 @@ END</pre>
             document.getElementById('sim-outputs').textContent = JSON.stringify(result.simulation_results.outputs, null, 2);
             document.getElementById('sim-variables').textContent = JSON.stringify(result.simulation_results.variables, null, 2);
             document.getElementById('input-vars').textContent = result.detected_inputs.join(', ');
+            currentAstData = result.ast;
+            document.getElementById('ast-controls').classList.remove('hidden');
+            document.getElementById('ast-summary').textContent = 'Press the button to reveal the AST.';
+            if (document.getElementById('ast-modal').classList.contains('open')) {
+                renderAstVisualization(currentAstData);
+            }
             
             // Show code generation section
             document.getElementById('code-generation').classList.remove('hidden');
@@ -1698,10 +2456,14 @@ END</pre>
         // Auto-detect variables when algorithm changes
         document.addEventListener('DOMContentLoaded', () => {
             const algorithmTextarea = document.getElementById('algorithm');
-            algorithmTextarea.addEventListener('input', detectVariables);
+            algorithmTextarea.addEventListener('input', () => {
+                detectVariables();
+                scheduleAstPreview();
+            });
             
             // Initial variable detection
             detectVariables();
+            scheduleAstPreview();
         });
     </script>
 </body>
@@ -1876,7 +2638,8 @@ def application(environ, start_response):
                             "outputs": result.get('outputs', []),
                             "variables": result.get('variables', {})
                         },
-                        "detected_inputs": detected_vars
+                        "detected_inputs": detected_vars,
+                        "ast": payload.get('ast', {})
                     }
                     
                     print(f"DEBUG: Response data = {response_data}")
@@ -1900,6 +2663,29 @@ def application(environ, start_response):
                 start_response('500 Internal Server Error', [('Content-Type', 'application/json')])
                 return [json.dumps({"error": f"Server error: {str(e)}"}).encode('utf-8')]
         
+        elif path == '/api/preview-ast':
+            try:
+                data = json.loads(post_data)
+                algorithm = data.get('algorithm', '')
+                algorithm = algorithm.replace('\\\\n', '\n').replace('\\\\r', '\r').replace('\\\\t', '\t')
+                algorithm = algorithm.replace('\\n', '\n').replace('\\r', '\r').replace('\\t', '\t')
+
+                if not algorithm.strip():
+                    start_response('400 Bad Request', [('Content-Type', 'application/json')])
+                    return [json.dumps({'error': 'Algorithm cannot be empty'}).encode('utf-8')]
+
+                ast_payload = _parse_algorithm_ast(algorithm)
+                response_data = {
+                    'success': True,
+                    'ast': ast_payload,
+                }
+                start_response('200 OK', [('Content-Type', 'application/json')])
+                return [json.dumps(response_data).encode('utf-8')]
+
+            except Exception as e:
+                start_response('400 Bad Request', [('Content-Type', 'application/json')])
+                return [json.dumps({'success': False, 'error': f'AST preview error: {str(e)}'}).encode('utf-8')]
+
         elif path == '/api/generate':
             try:
                 data = json.loads(post_data)

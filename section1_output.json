@@ -1,6 +1,6 @@
 {
   "algo2code_section": 1,
-  "source_code": "READ n\nread m\nPRINT n +m",
+  "source_code": "READ n\nREAD m\nSET sum = m + n\nPRINT sum",
   "ast": {
     "type": "Program",
     "statements": [
@@ -13,18 +13,26 @@
         "variable": "m"
       },
       {
-        "type": "Print",
+        "type": "Assign",
+        "variable": "sum",
         "expression": {
           "type": "BinaryOp",
           "op": "+",
           "left": {
             "type": "Variable",
-            "name": "n"
+            "name": "m"
           },
           "right": {
             "type": "Variable",
-            "name": "m"
+            "name": "n"
           }
+        }
+      },
+      {
+        "type": "Print",
+        "expression": {
+          "type": "Variable",
+          "name": "sum"
         }
       }
     ]
@@ -33,15 +41,16 @@
     "section": 1,
     "status": "success",
     "inputs": {
-      "n": 5,
-      "m": 7
+      "n": 8,
+      "m": 9
     },
     "outputs": [
-      12
+      17
     ],
     "variables": {
-      "n": 5,
-      "m": 7
+      "n": 8,
+      "m": 9,
+      "sum": 17
     },
     "read_order": [
       "n",
